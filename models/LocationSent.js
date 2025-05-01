@@ -1,13 +1,11 @@
+// models/LocationSent.js
 const mongoose = require("mongoose");
 
-const LocationEmailSchema = new mongoose.Schema({
+const LocationSentSchema = new mongoose.Schema({
   customerEmail: {
     type: String,
-    required: true
-  },
-  workerEmail: {
-    type: String,
-    required: true
+    required: true,
+    unique: true
   },
   latitude: {
     type: Number,
@@ -18,8 +16,7 @@ const LocationEmailSchema = new mongoose.Schema({
     required: true
   },
   label: {
-    type: String,
-    default: ""
+    type: String
   },
   createdAt: {
     type: Date,
@@ -27,4 +24,4 @@ const LocationEmailSchema = new mongoose.Schema({
   }
 });
 
-module.exports = mongoose.model("LocationEmail", LocationEmailSchema);
+module.exports = mongoose.model("LocationSent", LocationSentSchema);

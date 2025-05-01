@@ -5,8 +5,10 @@ import dotenv from "dotenv";
 import Worker from "../models/workerModel.js";
 import Booking from "../models/Booking.js";
 import LocationEmail from "../models/LocationEmail.js";
+import LocationSent from "../models/LocationSent.js";
 import BankDetail from "../models/BankDetails.js";
 import { ObjectId } from 'mongodb';
+import User from "../models/User.js";
 import { getGFS } from "../db.js"; 
 import { upload } from "../storage.js";
 const router = express.Router();
@@ -143,25 +145,25 @@ router.get("/getWorkerDetails/:email", async (req, res) => {
 });
 // Fetch Available Workers
 router.get("/available", async (req, res) => {
-    try {
-        const { service, fromDate, toDate } = req.query;
+  try {
+    const { service, fromDate, toDate } = req.query;
 
-        if (!service || !fromDate || !toDate) {
-            return res.status(400).json({ message: "Missing required parameters" });
-        }
-
-        const workers = await Worker.find({
-            isBusy: false,
-            services: { $in: [service] },
-            "availability.from": { $lte: fromDate },
-            "availability.to": { $gte: toDate }
-          });
-
-        res.json(workers);
-    } catch (error) {
-        console.error("Error fetching workers:", error);
-        res.status(500).json({ message: "Internal Server Error" });
+    if (!service || !fromDate || !toDate) {
+      return res.status(400).json({ message: "Missing required parameters" });
     }
+
+    const workers = await Worker.find({
+      isBusy: false,
+      services: service,
+      "availability.from": fromDate, // exact string match
+      "availability.to": toDate      // exact string match
+    });
+
+    res.json(workers);
+  } catch (error) {
+    console.error("Error fetching available workers:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
 });
 
 
@@ -264,7 +266,7 @@ const transporter = nodemailer.createTransport({
           });
           await bankDetail.save();
         }
-  
+        await User.updateOne({ email }, { $set: { bankDetails: true } });
         res.status(201).json({ message: "Bank details saved successfully" });
       } catch (err) {
         console.error("Error saving bank details:", err);
@@ -390,7 +392,48 @@ const transporter = nodemailer.createTransport({
           res.status(500).json({ message: "Failed to send OTP" });
       }
   });
-
+  router.post("/send-confirmation", async (req, res) => {
+    const { name, email, phone, message } = req.body;
+  
+    // if (!name || !email || !message) {
+    //   return res.status(400).json({ success: false, message: "Missing required fields." });
+    // }
+  
+    // Configure transporter
+    const transporter = nodemailer.createTransport({
+      service: "gmail", // or use "Outlook", "Yahoo", etc.
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+      }
+    });
+  
+    // Email content
+    const mailOptions = {
+      from: `"MARKTING HELP" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Thank you for contacting us!",
+      html: `
+        <p>Hi <strong>${name}</strong>,</p>
+        <p>Thank you for reaching out to us. Here's what we received:</p>
+        <ul>
+          <li><strong>Email:</strong> ${email}</li>
+          <li><strong>Phone:</strong> ${phone}</li>
+          <li><strong>Message:</strong> ${message}</li>
+        </ul>
+        <p>We'll get back to you shortly!</p>
+        <p>– Marketing support Team</p>
+      `
+    };
+  
+    try {
+      await transporter.sendMail(mailOptions);
+      res.json({ success: true, message: "Email sent successfully!" });
+    } catch (error) {
+      console.error("Error sending email:", error);
+      res.status(500).json({ success: false, message: "Failed to send email." });
+    }
+  });
   router.post("/contact-admin", async (req, res) => {
     const { issueType, email, description } = req.body;
   
@@ -454,6 +497,24 @@ const transporter = nodemailer.createTransport({
       return res.status(500).json({ message: "Failed to send email." });
     }
   });
+  router.put('/workers/approve', async (req, res) => {
+    const { email } = req.body;
+    try {
+      const user = await User.findOneAndUpdate(
+        { email },
+        { approved: true },
+        { new: true }
+      );
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      res.status(200).json({ message: 'User approved successfully', user });
+    } catch (err) {
+      console.error('Error approving user:', err);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+  
   router.post("/get-bank-details", async (req, res) => {
     const { email } = req.body;
   
@@ -608,7 +669,6 @@ const transporter = nodemailer.createTransport({
 
   router.put('/mark-work-done', async (req, res) => {
     const { customerEmail, workerEmail, fromDate, toDate } = req.body;
-  
     try {
       // 1. Mark booking as done
       const result = await Booking.updateOne(
@@ -622,6 +682,7 @@ const transporter = nodemailer.createTransport({
   
       // 2. Delete location entry
       await LocationEmail.deleteOne({ customerEmail, workerEmail });
+      await LocationSent.deleteOne({customerEmail});
   
       // 3. Delete worker
       await Worker.deleteOne({ email: workerEmail });

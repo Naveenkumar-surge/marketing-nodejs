@@ -4,6 +4,7 @@ import { ObjectId } from 'mongodb';
 import nodemailer from "nodemailer";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
+import User from "../models/User.js";
 import { GridFSBucket } from "mongodb";
 import { convertImageBufferToPdf } from "../utils/convertToPdf.js"; // Image->PDF conversion helper
 import { Readable } from 'stream';
@@ -176,6 +177,15 @@ router.post("/", upload.fields([{ name: "aadhar" }, { name: "pan" }]), async (re
     });
 
     await info.save();
+    const user = await User.findOne({ email });
+
+    if (user) {
+      if (user.userType === "worker") {
+        await User.updateOne({ email }, { personalInfo: true });
+      } else {
+        await User.updateOne({ email }, { personalInfo: true, bankDetails: true });
+      }
+    }
     res.status(201).json({ message: "Info saved successfully" });
   } catch (err) {
     console.error("Error saving personal info:", err);
