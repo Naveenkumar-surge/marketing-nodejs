@@ -122,6 +122,15 @@ router.get("/by-customer/:email", async (req, res) => {
       res.status(500).json({ message: "Internal Server Error" });
     }
   });
+  router.get('/all-bookings', async (req, res) => {
+    try {
+      const bookings = await Booking.find(); // Fetch all bookings from MongoDB
+      res.status(200).json(bookings); // Send bookings data as JSON response
+    } catch (error) {
+      console.error('Error fetching bookings:', error);
+      res.status(500).json({ message: 'Error fetching bookings' });
+    }
+  });
 router.get("/getWorkerDetails/:email", async (req, res) => {
     try {
         const { email } = req.params;
@@ -142,6 +151,62 @@ router.get("/getWorkerDetails/:email", async (req, res) => {
         console.error("Error retrieving worker details:", error);
         res.status(500).json({ message: "Internal Server Error" });
     }
+});
+router.get('/locationemails', async (req, res) => {
+  try {
+    const locations = await LocationEmail.find().sort({ createdAt: -1 }); // optional: newest first
+    res.status(200).json(locations);
+  } catch (error) {
+    console.error('Error fetching location emails:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+router.post('/ap/send-location-email', async (req, res) => {
+  const { customerEmail, workerEmail, mapLink, label } = req.body;
+
+  const mailOptions = {
+    from: process.env.EMAIL_USERS,
+    to: workerEmail,
+    subject: 'Worker Location Details',
+    html: `
+      <p>Dear Customer,</p>
+      <p>We sincerely apologize for any inconvenience caused. Please find below the details of your worker's location.</p>
+      <p><strong>Worker Email:</strong> ${customerEmail}</p>
+      <p><strong>Label:</strong> ${label || 'N/A'}</p>
+      <p>You can view the location on the map using the following link:</p>
+      <p><a href="${mapLink}" target="_blank">Click here to view location</a></p>
+      <br/>
+      <p>Thank you for your understanding and cooperation.</p>
+      <p>Best regards,<br/>Support Team</p>
+    `,
+  };
+  
+
+  try {
+    await transporter.sendMail(mailOptions);
+    res.status(200).json({ message: 'Email sent successfully' });
+  } catch (err) {
+    console.error('Email send error:', err);
+    res.status(500).json({ error: 'Failed to send email' });
+  }
+});
+router.post('/update-sent-count', async (req, res) => {
+  const { _id } = req.body; // The location item's ID
+  try {
+    const updatedLocation = await LocationEmail.findByIdAndUpdate(
+      _id,
+      { $inc: { sentCount: 1 } },  // Increment sentCount by 1
+      { new: true }  // Return the updated document
+    );
+    if (updatedLocation) {
+      res.status(200).json(updatedLocation);
+    } else {
+      res.status(404).json({ message: 'Location not found' });
+    }
+  } catch (err) {
+    console.error('Error updating sent count:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
 });
 // Fetch Available Workers
 router.get("/available", async (req, res) => {

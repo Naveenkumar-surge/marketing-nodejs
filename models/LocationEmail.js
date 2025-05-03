@@ -21,6 +21,10 @@ const LocationEmailSchema = new mongoose.Schema({
     type: String,
     default: ""
   },
+  sentCount: {
+    type: Number,
+    default: 0  // Initialize sentCount to 0
+  },
   createdAt: {
     type: Date,
     default: Date.now
