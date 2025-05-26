@@ -5,8 +5,8 @@ const router = express.Router();
 
 // Hardcoded Razorpay credentials for testing
 const razorpay = new Razorpay({
-    key_id: "rzp_test_x4xQ73ZzUCuHhh",
-    key_secret: "WqMYkEfu2WkoDAtyptqxCBGl"
+    key_id: "rzp_live_0cdo6yosjt7OZH",
+    key_secret: "AIZQ7fMNBqEwvYrULjHSA9WS"
 });
 // 🔐 Random key generator function
 const generateRandomKey = () => {
