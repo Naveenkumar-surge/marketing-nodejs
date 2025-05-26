@@ -76,21 +76,39 @@ router.post("/create", async (req, res) => {
 
 
 // Update Payment Status
+const crypto = require("crypto");
+
 router.post("/updatePayment", async (req, res) => {
-    try {
-        const { bookingId, paymentId } = req.body;
+  try {
+    const { bookingId, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
 
-        if (!bookingId || !paymentId) {
-            return res.status(400).json({ message: "Missing bookingId or paymentId" });
-        }
-
-        await Booking.findByIdAndUpdate(bookingId, { paymentStatus: "Paid" });
-
-        res.json({ message: "Payment successful!" });
-    } catch (error) {
-        console.error("Error updating payment:", error);
-        res.status(500).json({ message: "Internal Server Error" });
+    if (!bookingId || !razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({ message: "Missing required fields" });
     }
+
+    // Generate expected signature
+    const generatedSignature = crypto
+      .createHmac("sha256", "AIZQ7fMNBqEwvYrULjHSA9WS") // your Razorpay SECRET key
+      .update(razorpay_order_id + "|" + razorpay_payment_id)
+      .digest("hex");
+
+    // Verify
+    if (generatedSignature !== razorpay_signature) {
+      return res.status(400).json({ message: "Payment verification failed" });
+    }
+
+    // Signature valid → update payment status
+    await Booking.findByIdAndUpdate(bookingId, {
+      paymentStatus: "Paid",
+      razorpayPaymentId: razorpay_payment_id,
+    });
+
+    res.json({ message: "Payment verified and updated!" });
+  } catch (error) {
+    console.error("Error verifying payment:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
 });
+
 
 module.exports = router;
