@@ -267,79 +267,74 @@ const transporter = nodemailer.createTransport({
     },
   });
   // 7️⃣ Register Bank Details (with OTP verification)
-  router.post(
-    "/register",
-    upload.single("bankDoc"),
-    async (req, res) => {
-      try {
-        const {
-          email,
-          contactNumber,
-          bankName,
-          accountNumber,
-          ifsc
-        } = req.body;
-  
-        const file = req.file;
-        if (!file) {
-          return res.status(400).json({ error: "Bank document is required" });
-        }
-  
-        const allowedTypes = ["image/jpeg", "image/png", "application/pdf"];
-        if (!allowedTypes.includes(file.mimetype)) {
-          return res.status(400).json({ error: "Only JPG, PNG, and PDF formats are allowed" });
-        }
-  
-        // Convert to PDF if it's an image
-        let buffer = file.buffer;
-        let filename = `bankdoc-${Date.now()}.pdf`;
-  
-        if (file.mimetype !== "application/pdf") {
-          const { convertImageBufferToPdf } = await import("../utils/imageToPdf"); // update path
-          buffer = await convertImageBufferToPdf(buffer);
-        }
-  
-        // Upload to GridFS
-        const gfs = getGFS();
-        const uploadStream = gfs.openUploadStream(filename);
-        uploadStream.end(buffer);
-  
-        const bankDocFileId = await new Promise((resolve, reject) => {
-          uploadStream.on("finish", () => resolve(uploadStream.id));
-          uploadStream.on("error", reject);
-        });
-  
-        // Save to DB (insert or update)
-        let bankDetail = await BankDetail.findOne({ email });
-        if (bankDetail) {
-          bankDetail.contactNumber = contactNumber;
-          bankDetail.bankName = bankName;
-          bankDetail.accountNumber = accountNumber;
-          bankDetail.ifsc = ifsc;
-          bankDetail.bankDocFileId = bankDocFileId;
-          bankDetail.submitted = true;
-          await bankDetail.save();
-        } else {
-          bankDetail = new BankDetail({
-            email,
-            contactNumber,
-            bankName,
-            accountNumber,
-            ifsc,
-            bankDocFileId,
-            submitted: true,
-          });
-          await bankDetail.save();
-        }
-        await User.updateOne({ email }, { $set: { bankDetails: true } });
-        res.status(201).json({ message: "Bank details saved successfully" });
-      } catch (err) {
-        console.error("Error saving bank details:", err);
-        res.status(500).json({ error: "Server error" });
-      }
+ router.post("/register", upload.single("bankDoc"), async (req, res) => {
+  try {
+    const {
+      email,
+      contactNumber,
+      bankName,
+      accountNumber,
+      ifsc,
+    } = req.body;
+
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ error: "Bank document is required" });
     }
-  );
-  
+
+    const allowedTypes = ["image/jpeg", "image/png", "application/pdf"];
+    if (!allowedTypes.includes(file.mimetype)) {
+      return res.status(400).json({ error: "Only JPG, PNG, and PDF formats are allowed" });
+    }
+
+    const gfs = getGFS();
+
+    const uploadToGridFS = (fileBuffer, filename) => {
+      return new Promise((resolve, reject) => {
+        const uploadStream = gfs.openUploadStream(filename);
+        uploadStream.end(fileBuffer);
+        uploadStream.on("finish", () => resolve(uploadStream.id));
+        uploadStream.on("error", reject);
+      });
+    };
+
+    // Process bank document
+    let bankDocBuffer = file.buffer;
+    let bankDocFilename;
+
+    if (file.mimetype === "application/pdf") {
+      bankDocFilename = `bankdoc-${Date.now()}.pdf`;
+    } else {
+      const { convertImageBufferToPdf } = await import("../utils/imageToPdf"); // update path if needed
+      bankDocBuffer = await convertImageBufferToPdf(bankDocBuffer);
+      bankDocFilename = `bankdoc-${Date.now()}.pdf`;
+    }
+
+    // Upload to GridFS
+    const bankDocFileId = await uploadToGridFS(bankDocBuffer, bankDocFilename);
+
+    // Save new bank detail
+    const bankDetail = new BankDetail({
+      email,
+      contactNumber,
+      bankName,
+      accountNumber,
+      ifsc,
+      bankDocFileId,
+      submitted: true,
+    });
+
+    await bankDetail.save();
+
+    // Update user document flag
+    await User.updateOne({ email }, { $set: { bankDetails: true } });
+
+    res.status(201).json({ message: "Bank details registered successfully" });
+  } catch (err) {
+    console.error("Error saving bank details:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
   router.post("/sendWelcomeEmail", (req, res) => {
       const { email } = req.body;
   
@@ -628,7 +623,7 @@ const transporter = nodemailer.createTransport({
   });
   router.get('/filebase64/:fileId', async (req, res) => {
     const fileId = req.params.fileId;
-  
+     console.log(fileId);
     if (!mongoose.Types.ObjectId.isValid(fileId)) {
       return res.status(400).json({ error: 'Invalid file ID' });
     }
